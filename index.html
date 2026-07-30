@@ -137,14 +137,9 @@ const CONFIG = {
 
   // Nombres de las fotos, deben estar dentro de la carpeta /photos
   // junto a este archivo. Agregá o sacá las que quieras.
-  PHOTOS: [
-    "photos/1.png",
-    "photos/2.png",
-    "photos/3.png",
-    "photos/4.png",
-    "photos/5.png"
-  ],
-  ],
+  // No hace falta indicar la extensión: prueba .png, .jpg y .jpeg solo.
+  PHOTOS: [1, 2, 3, 4, 5],
+  PHOTO_EXTENSIONS: ["png", "jpg", "jpeg"],
   PHOTO_INTERVAL_MS: 12000
 };
 
@@ -200,12 +195,22 @@ setInterval(updateWeather, 10*60*1000);
 function initPhotos(){
   const container = document.getElementById('bg-photos');
   if(!CONFIG.PHOTOS.length) return;
-  CONFIG.PHOTOS.forEach((src, i)=>{
+
+  // Para cada numero de foto, probamos cada extension hasta que una cargue bien
+  function tryLoad(num, extIndex, img){
+    if(extIndex >= CONFIG.PHOTO_EXTENSIONS.length) return; // ninguna extension funcionó
+    const ext = CONFIG.PHOTO_EXTENSIONS[extIndex];
+    img.onerror = ()=> tryLoad(num, extIndex+1, img);
+    img.src = `photos/${num}.${ext}`;
+  }
+
+  CONFIG.PHOTOS.forEach((num, i)=>{
     const img = document.createElement('img');
-    img.src = src;
     if(i===0) img.classList.add('active');
     container.appendChild(img);
+    tryLoad(num, 0, img);
   });
+
   let idx = 0;
   const imgs = container.querySelectorAll('img');
   if(imgs.length < 2) return;
