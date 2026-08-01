@@ -1,1 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Casa Dashboard</title>
+<style>
+  :root{
+    --bg:#0b0d10;
+    --panel: rgba(20,22,26,0.35);
+    --accent:#1DB954; /* verde Spotify */
+    --text:#f2f2f2;
+    --sub:#9aa0a6;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;width:100%;
+    background:var(--bg);
+    color:var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+    overflow:hidden;
+  }
+  #bg-photos{
+    position:fixed; inset:0; z-index:0;
+  }
+  #bg-photos img{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+    opacity:0; transition:opacity 2.5s ease-in-out;
+    filter: brightness(0.75) saturate(1.1);
+  }
+  #bg-photos img.active{opacity:1;}
+  #overlay{
+    position:relative; z-index:1;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr auto;
+    height:100vh; width:100vw;
+    padding:48px;
+    gap:24px;
+  }
+  .panel{
+    background:var(--panel);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border-radius:24px;
+    border:1px solid rgba(255,255,255,0.08);
+    padding:28px 32px;
+  }
+  #clock-panel{
+    grid-column:1/2; grid-row:1/2;
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  #time{
+    font-size:7.5vw; font-weight:600; letter-spacing:2px; line-height:1;
+  }
+  #date{
+    font-size:1.6vw; color:var(--sub); margin-top:12px; text-transform:capitalize;
+  }
+  #weather-panel{
+    grid-column:2/3; grid-row:1/2;
+    display:flex; flex-direction:column; justify-content:center; align-items:flex-end; text-align:right;
+  }
+  #w-temp{font-size:5vw; font-weight:600;}
+  #w-desc{font-size:1.4vw; color:var(--sub); margin-top:4px;}
+  #w-loc{font-size:1vw; color:var(--sub); margin-top:10px;}
+  #spotify-panel{
+    grid-column:1/3; grid-row:2/3;
+    display:flex; align-items:center; gap:24px;
+    min-height:120px;
+  }
+  #sp-art{
+    width:88px;height:88px;border-radius:12px;object-fit:cover;
+    background:#222;flex-shrink:0;
+  }
+  #sp-info{flex:1; overflow:hidden;}
+  #sp-track{font-size:1.5vw; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  #sp-artist{font-size:1.1vw; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  #sp-bar-bg{background:rgba(255,255,255,0.15); height:4px; border-radius:2px; margin-top:10px; width:100%;}
+  #sp-bar-fill{background:var(--accent); height:4px; border-radius:2px; width:0%;}
+  #sp-connect{
+    background:var(--accent); color:#000; border:none; padding:14px 26px;
+    border-radius:30px; font-size:1.1vw; font-weight:700; cursor:pointer;
+  }
+  #sp-status{color:var(--sub); font-size:1vw;}
+  #sp-voice-btn{
+    margin-left:16px; background:rgba(255,255,255,0.1); color:var(--text);
+    border:1px solid rgba(255,255,255,0.2); padding:10px 18px; border-radius:20px;
+    font-size:0.9vw; cursor:pointer;
+  }
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
 
+<div id="bg-photos"></div>
+
+<div id="overlay">
+  <div class="panel" id="clock-panel">
+    <div id="time">--:--</div>
+    <div id="date">-- de -- --</div>
+  </div>
+
+  <div class="panel" id="weather-panel">
+    <div id="w-temp">--°</div>
+    <div id="w-desc">Cargando clima...</div>
+    <div id="w-loc">San Rafael, Mendoza</div>
+  </div>
+
+  <div class="panel" id="spotify-panel">
+    <div id="sp-logged-out">
+      <button id="sp-connect">Conectar con Spotify</button>
+      <div id="sp-status"></div>
+    </div>
+    <div id="sp-logged-in" class="hidden" style="display:flex; align-items:center; gap:24px; width:100%;">
+      <img id="sp-art" src="" alt="">
+      <div id="sp-info">
+        <div id="sp-track">Nada sonando</div>
+        <div id="sp-artist"></div>
+        <div id="sp-bar-bg"><div id="sp-bar-fill"></div></div>
+      </div>
+      <button id="sp-voice-btn" onclick="toggleVoice()">🎤 Activar voz</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIGURACION - EDITAR ACA
+   ============================================================ */
+const CONFIG = {
+  // Pegá acá el Client ID que te da Spotify (developer.spotify.com/dashboard)
+  SPOTIFY_CLIENT_ID: "487a3b1ad5694d81b713596de6309a73",
+
+  // Coordenadas de San Rafael, Mendoza (no hace falta tocarlas)
+  LAT: -34.6177,
+  LON: -68.3301,
+
+  // Nombres de las fotos, deben estar dentro de la carpeta /photos
+  // junto a este archivo. Agregá o sacá las que quieras.
+  // No hace falta indicar la extensión: prueba .png, .jpg y .jpeg solo.
+  PHOTOS: [1, 2, 3, 4, 5],
+  PHOTO_EXTENSIONS: ["png", "jpg", "jpeg"],
+  PHOTO_INTERVAL_MS: 12000
+};
+
+/* ============================================================
+   RELOJ
+   ============================================================ */
+function updateClock(){
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('time').textContent = `${hh}:${mm}`;
+
+  const dateStr = now.toLocaleDateString('es-AR', {
+    weekday:'long', day:'numeric', month:'long'
+  });
+  document.getElementById('date').textContent = dateStr;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+/* ============================================================
+   CLIMA (Open-Meteo, no necesita API key)
+   ============================================================ */
+const WMO = {
+  0:"Despejado",1:"Mayormente despejado",2:"Parcialmente nublado",3:"Nublado",
+  45:"Niebla",48:"Niebla escarchada",
+  51:"Llovizna débil",53:"Llovizna",55:"Llovizna intensa",
+  61:"Lluvia débil",63:"Lluvia",65:"Lluvia intensa",
+  71:"Nieve débil",73:"Nieve",75:"Nieve intensa",
+  80:"Chaparrones débiles",81:"Chaparrones",82:"Chaparrones fuertes",
+  95:"Tormenta",96:"Tormenta con granizo",99:"Tormenta fuerte"
+};
+
+async function updateWeather(){
+  try{
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}&current=temperature_2m,weather_code&timezone=America%2FArgentina%2FMendoza`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const temp = Math.round(data.current.temperature_2m);
+    const code = data.current.weather_code;
+    document.getElementById('w-temp').textContent = `${temp}°`;
+    document.getElementById('w-desc').textContent = WMO[code] || "—";
+  }catch(e){
+    document.getElementById('w-desc').textContent = "Sin datos de clima";
+  }
+}
+updateWeather();
+setInterval(updateWeather, 10*60*1000);
+
+/* ============================================================
+   FOTOS DE FONDO
+   ============================================================ */
+function initPhotos(){
+  const container = document.getElementById('bg-photos');
+  if(!CONFIG.PHOTOS.length) return;
+
+  // Para cada numero de foto, probamos cada extension hasta que una cargue bien
+  function tryLoad(num, extIndex, img){
+    if(extIndex >= CONFIG.PHOTO_EXTENSIONS.length) return; // ninguna extension funcionó
+    const ext = CONFIG.PHOTO_EXTENSIONS[extIndex];
+    img.onerror = ()=> tryLoad(num, extIndex+1, img);
+    img.src = `photos/${num}.${ext}`;
+  }
+
+  CONFIG.PHOTOS.forEach((num, i)=>{
+    const img = document.createElement('img');
+    if(i===0) img.classList.add('active');
+    container.appendChild(img);
+    tryLoad(num, 0, img);
+  });
+
+  let idx = 0;
+  const imgs = container.querySelectorAll('img');
+  if(imgs.length < 2) return;
+  setInterval(()=>{
+    imgs[idx].classList.remove('active');
+    idx = (idx+1) % imgs.length;
+    imgs[idx].classList.add('active');
+  }, CONFIG.PHOTO_INTERVAL_MS);
+}
+initPhotos();
+
+/* ============================================================
+   SPOTIFY - Authorization Code + PKCE (100% del lado del cliente,
+   no necesita client secret ni servidor propio)
+   ============================================================ */
+const SP = {
+  REDIRECT_URI: window.location.origin + window.location.pathname,
+  SCOPES: "user-read-currently-playing user-read-playback-state user-modify-playback-state",
+  token: null,
+  tokenExpiresAt: 0
+};
+
+function base64url(buffer){
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+
+async function sha256(plain){
+  const data = new TextEncoder().encode(plain);
+  return await crypto.subtle.digest('SHA-256', data);
+}
+
+function randomString(len=64){
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b=>('0'+(b%36).toString(36)).slice(-1)).join('');
+}
+
+async function startSpotifyLogin(){
+  const verifier = randomString(64);
+  sessionStorage.setItem('sp_verifier', verifier);
+  const challenge = base64url(await sha256(verifier));
+
+  const params = new URLSearchParams({
+    client_id: CONFIG.SPOTIFY_CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: SP.REDIRECT_URI,
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+    scope: SP.SCOPES
+  });
+  window.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
+}
+
+async function exchangeCodeForToken(code){
+  const verifier = sessionStorage.getItem('sp_verifier');
+  const body = new URLSearchParams({
+    client_id: CONFIG.SPOTIFY_CLIENT_ID,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: SP.REDIRECT_URI,
+    code_verifier: verifier
+  });
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body
+  });
+  const data = await res.json();
+  if(data.access_token){
+    SP.token = data.access_token;
+    SP.tokenExpiresAt = Date.now() + (data.expires_in*1000);
+    sessionStorage.setItem('sp_refresh', data.refresh_token || '');
+    showSpotifyLoggedIn();
+    pollNowPlaying();
+  }else{
+    document.getElementById('sp-status').textContent = "No se pudo conectar. Reintentá.";
+  }
+}
+
+async function refreshToken(){
+  const refresh_token = sessionStorage.getItem('sp_refresh');
+  if(!refresh_token) return false;
+  const body = new URLSearchParams({
+    client_id: CONFIG.SPOTIFY_CLIENT_ID,
+    grant_type: 'refresh_token',
+    refresh_token
+  });
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body
+  });
+  const data = await res.json();
+  if(data.access_token){
+    SP.token = data.access_token;
+    SP.tokenExpiresAt = Date.now() + (data.expires_in*1000);
+    return true;
+  }
+  return false;
+}
+
+function showSpotifyLoggedIn(){
+  document.getElementById('sp-logged-out').classList.add('hidden');
+  document.getElementById('sp-logged-in').classList.remove('hidden');
+}
+
+async function pollNowPlaying(){
+  const check = async ()=>{
+    if(Date.now() > SP.tokenExpiresAt - 5000){
+      const ok = await refreshToken();
+      if(!ok) return;
+    }
+    try{
+      const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+        headers:{ Authorization: `Bearer ${SP.token}` }
+      });
+      if(res.status === 204){
+        document.getElementById('sp-track').textContent = "Nada sonando";
+        document.getElementById('sp-artist').textContent = "";
+        return;
+      }
+      const data = await res.json();
+      if(data && data.item){
+        document.getElementById('sp-track').textContent = data.item.name;
+        document.getElementById('sp-artist').textContent = data.item.artists.map(a=>a.name).join(', ');
+        const art = data.item.album.images[0]?.url;
+        if(art) document.getElementById('sp-art').src = art;
+        const pct = (data.progress_ms / data.item.duration_ms) * 100;
+        document.getElementById('sp-bar-fill').style.width = `${pct}%`;
+      }
+    }catch(e){ /* silencioso */ }
+  };
+  check();
+  setInterval(check, 5000);
+}
+
+document.getElementById('sp-connect').addEventListener('click', startSpotifyLogin);
+
+/* ============================================================
+   CONTROL DE REPRODUCCION (pausa, siguiente, volumen...)
+   ============================================================ */
+async function spotifyControl(endpoint, method='PUT', qs=''){
+  await fetch(`https://api.spotify.com/v1/me/player/${endpoint}${qs}`, {
+    method,
+    headers:{ Authorization:`Bearer ${SP.token}` }
+  });
+}
+
+async function adjustVolume(delta){
+  try{
+    const res = await fetch('https://api.spotify.com/v1/me/player', {
+      headers:{ Authorization:`Bearer ${SP.token}` }
+    });
+    if(res.status !== 200) return;
+    const data = await res.json();
+    const current = data?.device?.volume_percent ?? 50;
+    const next = Math.max(0, Math.min(100, current + delta));
+    await spotifyControl('volume', 'PUT', `?volume_percent=${next}`);
+  }catch(e){ /* silencioso */ }
+}
+
+/* ============================================================
+   VOZ (Web Speech API) - solo funciona en la maquina donde
+   esta abierto el dashboard (necesita microfono + https o localhost)
+   ============================================================ */
+let voiceActive = false;
+
+function initVoice(){
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!Rec){
+    alert("Este navegador no soporta reconocimiento de voz. Probá en Chrome.");
+    return null;
+  }
+  const rec = new Rec();
+  rec.lang = 'es-AR';
+  rec.continuous = true;
+  rec.interimResults = false;
+  rec.onresult = (e)=>{
+    const text = e.results[e.results.length-1][0].transcript.toLowerCase();
+    handleVoiceCommand(text);
+  };
+  rec.onend = ()=>{ if(voiceActive) rec.start(); };
+  rec.onerror = (e)=>{ console.log('voice error', e.error); };
+  return rec;
+}
+
+function toggleVoice(){
+  if(!SP.token){
+    alert("Primero conectate con Spotify.");
+    return;
+  }
+  if(!window._rec) window._rec = initVoice();
+  if(!window._rec) return;
+  voiceActive = !voiceActive;
+  const btn = document.getElementById('sp-voice-btn');
+  if(voiceActive){
+    window._rec.start();
+    btn.textContent = "🎤 Escuchando...";
+  }else{
+    window._rec.stop();
+    btn.textContent = "🎤 Activar voz";
+  }
+}
+
+function handleVoiceCommand(text){
+  if(text.includes('pausa')) spotifyControl('pause', 'PUT');
+  else if(text.includes('siguiente') || text.includes('proxima') || text.includes('próxima')) spotifyControl('next', 'POST');
+  else if(text.includes('anterior')) spotifyControl('previous', 'POST');
+  else if(text.includes('subi') || text.includes('subí') || text.includes('mas fuerte') || text.includes('más fuerte')) adjustVolume(15);
+  else if(text.includes('baja') || text.includes('bajá') || text.includes('mas bajo') || text.includes('más bajo')) adjustVolume(-15);
+  else if(text.includes('pone ') || text.includes('poné ') || text.includes('reproduci ') || text.includes('reproducí ')){
+    // Ej: "poné bohemian rhapsody" -> busca y reproduce esa cancion
+    const query = text
+      .replace('pone ', '').replace('poné ', '')
+      .replace('reproduci ', '').replace('reproducí ', '')
+      .trim();
+    if(query) playSongByName(query);
+  }
+  else if(text.includes('reproduc') || text.includes('segui') || text.includes('dale')) spotifyControl('play', 'PUT');
+}
+
+async function playSongByName(query){
+  try{
+    const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1`, {
+      headers:{ Authorization:`Bearer ${SP.token}` }
+    });
+    const data = await res.json();
+    const track = data?.tracks?.items?.[0];
+    if(!track){
+      document.getElementById('sp-track').textContent = `No encontré "${query}"`;
+      return;
+    }
+    await fetch('https://api.spotify.com/v1/me/player/play', {
+      method:'PUT',
+      headers:{ Authorization:`Bearer ${SP.token}`, 'Content-Type':'application/json' },
+      body: JSON.stringify({ uris:[track.uri] })
+    });
+  }catch(e){ /* silencioso */ }
+}
+
+// Al cargar: si venimos de Spotify con ?code=..., canjeamos el token
+(function initSpotify(){
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if(code){
+    window.history.replaceState({}, document.title, window.location.pathname);
+    exchangeCodeForToken(code);
+  }
+})();
+</script>
+</body>
+</html>
