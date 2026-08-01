@@ -391,10 +391,15 @@ function initVoice(){
   rec.interimResults = false;
   rec.onresult = (e)=>{
     const text = e.results[e.results.length-1][0].transcript.toLowerCase();
+    console.log('[voz] escuché:', text);
     handleVoiceCommand(text);
   };
-  rec.onend = ()=>{ if(voiceActive) rec.start(); };
-  rec.onerror = (e)=>{ console.log('voice error', e.error); };
+  rec.onend = ()=>{
+    console.log('[voz] el reconocimiento se detuvo, reiniciando...', voiceActive);
+    if(voiceActive) rec.start();
+  };
+  rec.onerror = (e)=>{ console.log('[voz] ERROR:', e.error); };
+  rec.onstart = ()=>{ console.log('[voz] arrancó a escuchar'); };
   return rec;
 }
 
@@ -416,21 +421,23 @@ function toggleVoice(){
   }
 }
 
-function handleVoiceCommand(text){
-  if(text.includes('pausa')) spotifyControl('pause', 'PUT');
-  else if(text.includes('siguiente') || text.includes('proxima') || text.includes('próxima')) spotifyControl('next', 'POST');
-  else if(text.includes('anterior')) spotifyControl('previous', 'POST');
-  else if(text.includes('subi') || text.includes('subí') || text.includes('mas fuerte') || text.includes('más fuerte')) adjustVolume(15);
-  else if(text.includes('baja') || text.includes('bajá') || text.includes('mas bajo') || text.includes('más bajo')) adjustVolume(-15);
-  else if(text.includes('pone ') || text.includes('poné ') || text.includes('reproduci ') || text.includes('reproducí ')){
-    // Ej: "poné bohemian rhapsody" -> busca y reproduce esa cancion
-    const query = text
-      .replace('pone ', '').replace('poné ', '')
-      .replace('reproduci ', '').replace('reproducí ', '')
-      .trim();
+function handleVoiceCommand(rawText){
+  // Normalizamos: sacamos tildes para que "pausá"/"pausa" matcheen igual
+  const text = rawText.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  console.log('[voz] normalizado:', text);
+
+  if(text.includes('pausa')){ console.log('[voz] -> pausa'); spotifyControl('pause', 'PUT'); }
+  else if(text.includes('siguiente') || text.includes('proxima')){ console.log('[voz] -> siguiente'); spotifyControl('next', 'POST'); }
+  else if(text.includes('anterior')){ console.log('[voz] -> anterior'); spotifyControl('previous', 'POST'); }
+  else if(text.includes('subi') || text.includes('mas fuerte')){ console.log('[voz] -> subir volumen'); adjustVolume(15); }
+  else if(text.includes('baja') || text.includes('mas bajo')){ console.log('[voz] -> bajar volumen'); adjustVolume(-15); }
+  else if(text.includes('pone ') || text.includes('reproduci ') || text.includes('busca ')){
+    const query = text.replace('pone ', '').replace('reproduci ', '').replace('busca ', '').trim();
+    console.log('[voz] -> buscar y reproducir:', query);
     if(query) playSongByName(query);
   }
-  else if(text.includes('reproduc') || text.includes('segui') || text.includes('dale')) spotifyControl('play', 'PUT');
+  else if(text.includes('reproduc') || text.includes('segui') || text.includes('dale')){ console.log('[voz] -> play'); spotifyControl('play', 'PUT'); }
+  else{ console.log('[voz] -> no matcheó ningún comando'); }
 }
 
 async function playSongByName(query){
